@@ -10,19 +10,19 @@ The goal of this thesis is to **numerically solve a class of BSDEs** by projecti
 
 ## 📁 Project Structure
 
-- `Example.py` – Main script to run the simulation.
+- `Finite_differences.py` – Main script to run the simulation.
 
 ## 🧠 Methodology
 
 1. **Time discretization** via Euler scheme.
-2. **Finite element approximation** using a projection on an orthonormal basis (obtained via SVD).
+2. **Finite element approximation** using a projection on an orthonormal basis.
 3. **Forward simulation** of the stochastic process.
 4. **Terminal condition projection** onto the finite element space.
 5. **Backward iteration** for computing the BSDE solution, possibly under constraints.
 
 ## 🧪 Numerical Results
 
-The numerical results are compared against known solutions or benchmark values. Plots and accuracy analysis are available in the `plots/` directory.
+The numerical results are compared against known solutions or benchmark values.
 
 ## ⚙️ Requirements
 
