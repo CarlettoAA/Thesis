@@ -14,13 +14,13 @@ sigma = 0.2  # Volatility (20%)
 delta = 0.1  # dividends rate
 S0 = 100  # Initial stock price
 u = 9  # concavity param
-rho = 10000  # special value
+rho = 1000  # special value
 K = 110  # strike price
 T = 0.5  # Time horizon (1 year)
-N = 40  # Number of time steps (daily) 252 for a yearly simulation
-L = 100000  # Number of simulation paths
+N = 15  # Number of time steps
+L = 10000  # Number of simulated paths
 D = 5  # Value for Basis function; not relevant to be defined
-n = 20   # just for example
+n = 0     # just for example
 q = 0.5   # just for example
 
 
@@ -78,6 +78,21 @@ basis_functions = [
     lambda x: G_option(x, delta, K, T)
 ]
 
+
+def orthonormalize_basis(S_tj, basis_functions):
+
+    # Evaluate all basis functions on S_tj
+    Phi = np.column_stack([f(S_tj) for f in basis_functions])  # Shape: (L, K)
+
+    # SVD
+    U, s, Vt = svd(Phi, full_matrices=False)
+
+    # Retain columns corresponding to non-negligible singular values
+    kappa_j = np.sum(s > 1e-10)
+    Phi_orth = U[:, :kappa_j] * np.sqrt(L)  # scale to satisfy ⟨ψ_i, ψ_j⟩ = δ_ij
+
+    return Phi_orth # that is L X kappa_j
+
 def black_scholes_call_div(S, K, T, r, delta, sigma):
     d1 = (np.log(S / K) + (r - delta + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     d2 = d1 - sigma * np.sqrt(T)
@@ -90,7 +105,7 @@ def black_scholes_call_div(S, K, T, r, delta, sigma):
 if __name__ == "__main__":
 
     # Set seed for reproducibility
-    np.random.seed(66)
+    np.random.seed(86)
 
     BS_price = black_scholes_call_div(S0, K, T, r, delta, sigma)
     print("BS standard price:", BS_price)
@@ -119,9 +134,11 @@ if __name__ == "__main__":
 
     # the list that will contain all the final converging values
     Y_0_final = [0]
-    max_iter = 100000
+    max_iter = 1000
 
-    list_of_weights = [10 * i for i in range(0, 1)]  # [0, 10, 20, 30, 40, 50, ...]
+    #list_of_weights = [10 * i for i in range(0, 1)]  # [0, 10, 20, 30, 40, 50, ...]
+    #list_of_weights = [1 * i for i in range(36, 56)]  # [0, 10, 20, 30, 40, 50, ...]
+    list_of_weights = [0]
     for num_weight in list_of_weights:
 
         print("weight number:", num_weight)
@@ -130,7 +147,7 @@ if __name__ == "__main__":
         condition = False
         n_iter = 0
 
-        b_vec = np.zeros((1, L, N))  # first for convergence, second for time, third for simulation
+        b_vec = np.zeros((1, L, N))  # (iteration, simulation, time step)
         Y_j = np.zeros((1, L, N))  # first dimension for convergence, second for simulation
         #Y_j[-1, :, -1] = G_option(S[:, -1], delta, K, T) # not relevant, we do not work with the last j
         Z_j = np.zeros((1, L, N))  # first dimension for convergence, second for simulation
@@ -138,109 +155,73 @@ if __name__ == "__main__":
         while condition == False:
             n_iter += 1
             #print("This is iteration number:", n_iter)
-            if n_iter % 500 ==0 or n_iter == 1: print("This is iteration number:", n_iter)
+            #if n_iter % 50 == 0 or n_iter == 1: print("This is iteration number:", n_iter)
 
             new_layer = np.zeros((1, L, N))
             b_vec = np.concatenate((b_vec, new_layer), axis=0)   # creating space for a new iteration
             Y_j = np.concatenate((Y_j, new_layer), axis=0)       # creating space for a new iteration
             Z_j = np.concatenate((Z_j, new_layer), axis=0)       # creating space for a new iteration
             #Y_j[-1, :, -1] = G_option(S[:, -1], delta, K, T)     # not relevant, we do not work with the last j
-            b_vec[n_iter, :, -1] = G_option(S[:, -1], delta, K, T) #try.......................
+            b_vec[n_iter, :, N - 1] = G_option(S[:, -1], delta, K, T) #try.......................
 
             #print(b_vec[-1, :, N-1])
             # here should be starting from the last j, in the next j loop no!
             for j in range(N-2, -1, -1):  # python loops excludes the stop value (-1)
 
                 delta_j = t[j+1]-t[j] # python parte da 0
-                # To compute b_vec for each l, fixing j
+
+                # To compute b_vec for each l, fixing j < N-1
                 for l in range(0, L):
                     sum_generator = 0
                     # just to get the sum of the effect of the generator over time
                     for i in range(j, N-1): # check the indexes
                         sum_generator = sum_generator + generator(0, 0, Y_j[n_iter-1, l, i], Z_j[n_iter-1, l, i], num_weight)*delta_j
 
-                    b_vec[n_iter, l, j] = G_option(S[l, -1], delta, K, T) - sum_generator
+                    b_vec[n_iter, l, j] = b_vec[n_iter, l, N-1] - sum_generator
 
             for j in range(0, N-1):
 
-                # Orthonormalize a maximal subsistem of psi with respect to the empirical inner product
-                Phi = np.column_stack([f(S[:, j]) for f in basis_functions])  # (L x #basis_functions)
-                # Step 1: Scale Phi with sqrt(1/L)
-                Phi_scaled = Phi / np.sqrt(L)
-                # Step 2: QR decomposition (gives orthonormal columns w.r.t. empirical inner product)
-                Q, R = np.linalg.qr(Phi_scaled)
-                # Step 3: Unscale to get back to original scaling
-                orthonormal_basis_vectors = Q # already orthonormal under empirical inner product
-                orthonormal_basis_vectors = orthonormal_basis_vectors * np.sqrt(L)
+                delta_j = t[j + 1] - t[j]
 
-                """
-                #Orthonormalize a maximal subsistem of psi with respect to the empirical inner product
-                Phi = np.column_stack([f(S[:, j]) for f in basis_functions])  # (L x #basis_functions)
-                # --- Orthonormalize using SVD ---
-                U, S_vals, Vt = svd(Phi, full_matrices=False)
-                # Retain non-zero singular values only (numerical threshold)
-                threshold = 1e-10
-                rank = np.sum(S_vals > threshold)
-                # Orthonormal basis vectors (L x κ(j))
-                orthonormal_basis_vectors = U[:, :rank]
-                # normalization
-                orthonormal_basis_vectors = orthonormal_basis_vectors / np.linalg.norm(orthonormal_basis_vectors, axis=0)
-                """
-                # to check
-                G = orthonormal_basis_vectors.T @ orthonormal_basis_vectors / L
-                #print(np.round(G, 6))  # Print with rounding to inspect
+                orthonormal_basis_vectors = orthonormalize_basis(S[:, j], basis_functions)
+                _, kappa_j = orthonormal_basis_vectors.shape
+                Y_result = np.zeros(L)
+                Z_result = np.zeros(L)
 
-                # More elegant but it gives me the same result...
-                projection_coeffs = (orthonormal_basis_vectors.T @ b_vec[-1, :, j]) / L  # shape: (kappa_j,)
-                reconstructed_b = orthonormal_basis_vectors @ projection_coeffs  # shape: (L,)
-                Y_j[n_iter, :, j] = reconstructed_b
+                for lam in range(L):  # loop over λ
+                    sum_l_y = 0
+                    sum_l_z = 0
+                    for l in range(L):  # loop over l
+                        sum_k_y = 0
+                        sum_k_z = 0
+                        for k in range(kappa_j):  # loop over k
+                            psi_k_lam = orthonormal_basis_vectors[lam, k]
+                            psi_k_l = orthonormal_basis_vectors[l, k]
+                            sum_k_y += psi_k_lam * psi_k_l * b_vec[-1, l, j]
+                            sum_k_z += psi_k_lam * psi_k_l * b_vec[-1, l, j+1] * (W[l, j + 1] - W[l, j]) / t[j+1] - t[j]
+                        sum_l_y += sum_k_y
+                        sum_l_z += sum_k_z
+                    Y_result[lam] = sum_l_y / L
+                    Z_result[lam] = sum_l_z / L
 
-                projection_coeffs = (orthonormal_basis_vectors.T @ b_vec[-1, :, j+1]) / L  # shape: (kappa_j,)
-                reconstructed_b = orthonormal_basis_vectors @ projection_coeffs  # shape: (L,)
-                Z_j[n_iter, :, j] = reconstructed_b * (W[:, j+1] - W[:, j])
-
-                """
-                for lam in range(0, L):
-
-                    _, kappa_j = orthonormal_basis_vectors.shape
-                    Y_final_result = 0
-                    Z_final_result = 0
-                    for l_new in range(L):  # l_new = l in the paper
-                        Y_sum_k = 0
-                        Z_sum_k = 0
-                        for k in range(kappa_j):
-                            psi_k_lambda = orthonormal_basis_vectors[lam, k]
-                            psi_k_l = orthonormal_basis_vectors[l_new, k]
-
-                            # for Y
-                            Y_sum_k += psi_k_lambda * psi_k_l * b_vec[-1, l_new, j]
-
-                            # for Z
-                            Z_sum_k += psi_k_lambda * psi_k_l * b_vec[-1, l_new, j+1] * (W[l_new, j+1] - W[l_new, j]) / delta_j
-
-                        Y_final_result += Y_sum_k
-                        Z_final_result += Z_sum_k
-
-                    Y_final_result /= L
-                    Z_final_result /= L
-
-                    Y_j[n_iter, lam, j] = Y_final_result
-                    Z_j[n_iter, lam, j] = Z_final_result
+                # Assign manually computed result
+                Y_j[n_iter, :, j] = Y_result
+                Z_j[n_iter, :, j] = Z_result
 
 
-                    # END OF THE LAM LOOP
-                """
-                    # END OF THE j-LOOP OVER TIME
-                    #######################################################################
+            # END OF THE j-LOOP OVER TIME
+            #######################################################################
 
             # Now I have everything until j = 0.
             # to check condition for iteration
-            if n_iter > 1:
+            if n_iter >= 1:
                 if np.abs(np.mean(Y_j[n_iter-1, :, 0]) - np.mean(Y_j[n_iter, :, 0])) <= 0.0001:
                     condition = True
                     Y_0_final.append(np.mean(Y_j[n_iter, :, 0]))
                     print("Setting condition to True. Iteration n:", n_iter)
                     print("Y at time t=0:\n", np.mean(Y_j[n_iter, :, 0]))
+                else:
+                    print("n_iter = ", n_iter, "; Y_0 value = ", np.mean(Y_j[n_iter, :, 0]))
 
 
             # to break in case of errors:
