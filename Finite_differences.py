@@ -17,8 +17,8 @@ u = 9  # concavity param
 rho = 1000  # special value
 K = 110  # strike price
 T = 0.5  # Time horizon (1 year)
-N = 15  # Number of time steps
-L = 10000  # Number of simulated paths
+N = 40  # Number of time steps
+L = 100000  # Number of simulated paths
 D = 5  # Value for Basis function; not relevant to be defined
 n = 0     # just for example
 q = 0.5   # just for example
@@ -149,7 +149,6 @@ if __name__ == "__main__":
 
         b_vec = np.zeros((1, L, N))  # (iteration, simulation, time step)
         Y_j = np.zeros((1, L, N))  # first dimension for convergence, second for simulation
-        #Y_j[-1, :, -1] = G_option(S[:, -1], delta, K, T) # not relevant, we do not work with the last j
         Z_j = np.zeros((1, L, N))  # first dimension for convergence, second for simulation
 
         while condition == False:
@@ -161,15 +160,19 @@ if __name__ == "__main__":
             b_vec = np.concatenate((b_vec, new_layer), axis=0)   # creating space for a new iteration
             Y_j = np.concatenate((Y_j, new_layer), axis=0)       # creating space for a new iteration
             Z_j = np.concatenate((Z_j, new_layer), axis=0)       # creating space for a new iteration
-            #Y_j[-1, :, -1] = G_option(S[:, -1], delta, K, T)     # not relevant, we do not work with the last j
-            b_vec[n_iter, :, N - 1] = G_option(S[:, -1], delta, K, T) #try.......................
+            b_vec[n_iter, :, N - 1] = G_option(S[:, -1], delta, K, T) # It has to be like this for each iteration
 
-            #print(b_vec[-1, :, N-1])
-            # here should be starting from the last j, in the next j loop no!
+            # to compute the rest of b_vec
             for j in range(N-2, -1, -1):  # python loops excludes the stop value (-1)
+                delta_j = t[j+1]-t[j]
 
-                delta_j = t[j+1]-t[j] # python parte da 0
+                # Version with vectors
+                sum_generator = np.zeros(L)
+                for i in range(j, N-1): # check the indexes
+                    sum_generator = sum_generator + generator(0, 0, Y_j[n_iter-1, :, i], Z_j[n_iter-1, :, i], num_weight)*delta_j
+                b_vec[n_iter, :, j] = b_vec[n_iter, :, N-1] - sum_generator
 
+                """
                 # To compute b_vec for each l, fixing j < N-1
                 for l in range(0, L):
                     sum_generator = 0
@@ -178,11 +181,31 @@ if __name__ == "__main__":
                         sum_generator = sum_generator + generator(0, 0, Y_j[n_iter-1, l, i], Z_j[n_iter-1, l, i], num_weight)*delta_j
 
                     b_vec[n_iter, l, j] = b_vec[n_iter, l, N-1] - sum_generator
+                """
 
             for j in range(0, N-1):
 
                 delta_j = t[j + 1] - t[j]
 
+                # Optimize version
+                Phi = orthonormalize_basis(S[:, j], basis_functions)  # shape: (L, kappa_j)
+
+                # Project b_vec onto orthonormal basis at time j and j+1
+                B_Y = Phi.T @ b_vec[-1, :, j] / L        # shape: (kappa_j,)
+
+                dW = (W[:, j + 1] - W[:, j]) / delta_j  # shape: (L,)
+                b_adj = b_vec[-1, :, j+1] * dW
+                B_Z = Phi.T @ b_adj / L      # shape: (kappa_j,)
+
+                # Reconstruct the projections
+                Y_result_vec = Phi @ B_Y                     # shape: (L,)
+                Z_result_vec = Phi @ B_Z                       # shape: (L,)
+
+                # Store results
+                Y_j[n_iter, :, j] = Y_result_vec
+                Z_j[n_iter, :, j] = Z_result_vec
+
+                """
                 orthonormal_basis_vectors = orthonormalize_basis(S[:, j], basis_functions)
                 _, kappa_j = orthonormal_basis_vectors.shape
                 Y_result = np.zeros(L)
@@ -198,18 +221,21 @@ if __name__ == "__main__":
                             psi_k_lam = orthonormal_basis_vectors[lam, k]
                             psi_k_l = orthonormal_basis_vectors[l, k]
                             sum_k_y += psi_k_lam * psi_k_l * b_vec[-1, l, j]
-                            sum_k_z += psi_k_lam * psi_k_l * b_vec[-1, l, j+1] * (W[l, j + 1] - W[l, j]) / t[j+1] - t[j]
+                            sum_k_z += psi_k_lam * psi_k_l * b_vec[-1, l, j+1] * ((W[l, j + 1] - W[l, j]) / delta_j)
                         sum_l_y += sum_k_y
                         sum_l_z += sum_k_z
                     Y_result[lam] = sum_l_y / L
                     Z_result[lam] = sum_l_z / L
 
                 # Assign manually computed result
-                Y_j[n_iter, :, j] = Y_result
-                Z_j[n_iter, :, j] = Z_result
-
-
-            # END OF THE j-LOOP OVER TIME
+                #Y_j[n_iter, :, j] = Y_result
+                #Z_j[n_iter, :, j] = Z_result
+        
+                #print("Y_result_vec", Y_result_vec , "Y_result", Y_result)
+                #print("Z_result_vec", Z_result_vec, "Z_result", Z_result)
+                print("Y equal", np.allclose(Y_result_vec, Y_result))
+                print("Z equal", np.allclose(Z_result_vec, Z_result))
+                """
             #######################################################################
 
             # Now I have everything until j = 0.
