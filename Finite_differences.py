@@ -18,7 +18,7 @@ rho = 1000  # special value
 K = 110  # strike price
 T = 0.5  # Time horizon (1 year)
 N = 40  # Number of time steps
-L = 100000  # Number of simulated paths
+L = 10000  # Number of simulated paths
 D = 5  # Value for Basis function; not relevant to be defined
 n = 0     # just for example
 q = 0.5   # just for example
@@ -26,7 +26,7 @@ q = 0.5   # just for example
 
 def simulate_gbm(S0, mu, sigma, T, N, M, W):
 
-    dt = T/N
+    dt = T/(N-1)
     t = np.linspace(0, T, N)
     S = np.zeros((M, N))
     S[:, 0] = S0
@@ -105,13 +105,13 @@ def black_scholes_call_div(S, K, T, r, delta, sigma):
 if __name__ == "__main__":
 
     # Set seed for reproducibility
-    np.random.seed(26879)
+    np.random.seed(245)
 
     BS_price = black_scholes_call_div(S0, K, T, r, delta, sigma)
     print("BS standard price:", BS_price)
 
     # Simulations
-    W = np.random.standard_normal((L, N-1)) * np.sqrt(T/N)
+    W = np.random.standard_normal((L, N-1)) * np.sqrt(T/(N-1))
 
     t, S = simulate_gbm(S0, mu, sigma, T, N, L, W)
 
@@ -136,9 +136,8 @@ if __name__ == "__main__":
     max_iter = 1000
 
     #list_of_weights = [10 * i for i in range(0, 1)]  # [0, 10, 20, 30, 40, 50, ...]
-    #list_of_weights = [1 * i for i in range(36, 56)]  # [0, 10, 20, 30, 40, 50, ...]
-    list_of_weights = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    list_of_weights = [0]
+    list_of_weights = [1 * i for i in range(0, 31)]  # [0, 10, 20, 30, 40, 50, ...]
+    #list_of_weights = [0, 1, 2, 3, 4, 5]
     for num_weight in list_of_weights:
 
         print("weight number:", num_weight)
@@ -193,8 +192,7 @@ if __name__ == "__main__":
                 # Project b_vec onto orthonormal basis at time j and j+1
                 B_Y = Phi.T @ b_vec[-1, :, j] / L        # shape: (kappa_j,)
 
-                #dW_j = (W[:, j + 1] - W[:, j])  # shape: (L,)
-                dW_j = W[:, j] #/ np.sqrt(2)
+                dW_j = W[:, j]
                 b_adj = b_vec[-1, :, j+1] * dW_j / delta_j
                 B_Z = Phi.T @ b_adj / L      # shape: (kappa_j,)
 
@@ -241,8 +239,9 @@ if __name__ == "__main__":
 
             # Now I have everything until j = 0.
             # to check condition for iteration
-            if n_iter >= 1:
-                if np.abs(np.mean(Y_j[n_iter-1, :, 0]) - np.mean(Y_j[n_iter, :, 0])) <= 0.0001:
+            if n_iter >= 2:
+                if np.abs(np.mean(Y_j[n_iter-1, :, 0]) - np.mean(Y_j[n_iter, :, 0])) <= 0.0001 or \
+                    np.abs(np.mean(Y_j[n_iter-2, :, 0]) - np.mean(Y_j[n_iter, :, 0])) <= 0.0001:    #to avoid swinging between two values
                     condition = True
                     Y_0_final.append(np.mean(Y_j[n_iter, :, 0]))
                     print("Setting condition to True. Iteration n:", n_iter)
