@@ -26,13 +26,13 @@ q = 0.5   # just for example
 
 def simulate_gbm(S0, mu, sigma, T, N, M, W):
 
-    dt = T / N
+    dt = T/N
     t = np.linspace(0, T, N)
     S = np.zeros((M, N))
     S[:, 0] = S0
 
     for i in range(1, N):
-        S[:, i] = S[:, i - 1] * np.exp((mu - 0.5 * sigma ** 2) * dt + sigma * np.sqrt(dt) * W[:, i])
+        S[:, i] = S[:, i - 1] * np.exp((mu - 0.5 * sigma ** 2) * dt + sigma * W[:, i-1])
 
     return t, S
 
@@ -57,7 +57,7 @@ def f_con(x, u, q, rho):
 # generator
 def generator(t, s, y, z, weight):
 
-    return r * y - (mu - r)*z/sigma - weight/10 * np.maximum(z/sigma - y - f_con(y, u, q, rho), 0)
+    return r * y + (mu - r)*z/sigma - weight/10 * np.maximum(z/sigma - y - f_con(y, u, q, rho), 0)
 
 def G_option(s, delta, K, T):
 
@@ -89,7 +89,7 @@ def orthonormalize_basis(S_tj, basis_functions):
 
     # Retain columns corresponding to non-negligible singular values
     kappa_j = np.sum(s > 1e-10)
-    Phi_orth = U[:, :kappa_j] * np.sqrt(L)  # scale to satisfy ⟨ψ_i, ψ_j⟩ = δ_ij
+    Phi_orth = U[:, :kappa_j] * np.sqrt(L) # scale to satisfy ⟨ψ_i, ψ_j⟩ = δ_ij = phi * phi / L (empirical scalar product)
 
     return Phi_orth # that is L X kappa_j
 
@@ -105,15 +105,14 @@ def black_scholes_call_div(S, K, T, r, delta, sigma):
 if __name__ == "__main__":
 
     # Set seed for reproducibility
-    np.random.seed(86)
+    np.random.seed(26879)
 
     BS_price = black_scholes_call_div(S0, K, T, r, delta, sigma)
     print("BS standard price:", BS_price)
-    # STEP 1: choose a partition and a family of functions.
 
-    # STEP 2: Stock price process
-    # Run simulation
-    W = np.random.standard_normal((L, N))
+    # Simulations
+    W = np.random.standard_normal((L, N-1)) * np.sqrt(T/N)
+
     t, S = simulate_gbm(S0, mu, sigma, T, N, L, W)
 
     #print("t", t)
@@ -123,7 +122,7 @@ if __name__ == "__main__":
     """
     # Plot results
     plt.figure(figsize=(10, 6))
-    for i in range(L):
+    for i in range(100):
         plt.plot(t, S[i], lw=1)
     plt.title('Geometric Brownian Motion Simulation of Stock Prices')
     plt.xlabel('Time (Years)')
@@ -138,6 +137,7 @@ if __name__ == "__main__":
 
     #list_of_weights = [10 * i for i in range(0, 1)]  # [0, 10, 20, 30, 40, 50, ...]
     #list_of_weights = [1 * i for i in range(36, 56)]  # [0, 10, 20, 30, 40, 50, ...]
+    list_of_weights = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     list_of_weights = [0]
     for num_weight in list_of_weights:
 
@@ -169,7 +169,7 @@ if __name__ == "__main__":
                 # Version with vectors
                 sum_generator = np.zeros(L)
                 for i in range(j, N-1): # check the indexes
-                    sum_generator = sum_generator + generator(0, 0, Y_j[n_iter-1, :, i], Z_j[n_iter-1, :, i], num_weight)*delta_j
+                    sum_generator = sum_generator + generator(t[i], S[:, i], Y_j[n_iter-1, :, i], Z_j[n_iter-1, :, i], num_weight)*delta_j
                 b_vec[n_iter, :, j] = b_vec[n_iter, :, N-1] - sum_generator
 
                 """
@@ -193,13 +193,14 @@ if __name__ == "__main__":
                 # Project b_vec onto orthonormal basis at time j and j+1
                 B_Y = Phi.T @ b_vec[-1, :, j] / L        # shape: (kappa_j,)
 
-                dW = (W[:, j + 1] - W[:, j]) / delta_j  # shape: (L,)
-                b_adj = b_vec[-1, :, j+1] * dW
+                #dW_j = (W[:, j + 1] - W[:, j])  # shape: (L,)
+                dW_j = W[:, j] #/ np.sqrt(2)
+                b_adj = b_vec[-1, :, j+1] * dW_j / delta_j
                 B_Z = Phi.T @ b_adj / L      # shape: (kappa_j,)
 
                 # Reconstruct the projections
-                Y_result_vec = Phi @ B_Y                     # shape: (L,)
-                Z_result_vec = Phi @ B_Z                       # shape: (L,)
+                Y_result_vec = Phi @ B_Y     # shape: (L,)
+                Z_result_vec = Phi @ B_Z     # shape: (L,)
 
                 # Store results
                 Y_j[n_iter, :, j] = Y_result_vec
