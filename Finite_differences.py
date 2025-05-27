@@ -239,9 +239,8 @@ if __name__ == "__main__":
 
             # Now I have everything until j = 0.
             # to check condition for iteration
-            if n_iter >= 2:
-                if np.abs(np.mean(Y_j[n_iter-1, :, 0]) - np.mean(Y_j[n_iter, :, 0])) <= 0.0001 or \
-                    np.abs(np.mean(Y_j[n_iter-2, :, 0]) - np.mean(Y_j[n_iter, :, 0])) <= 0.0001:    #to avoid swinging between two values
+            if n_iter >= 1:
+                if np.abs(np.mean(Y_j[n_iter-1, :, 0]) - np.mean(Y_j[n_iter, :, 0])) <= 0.0001:
                     condition = True
                     Y_0_final.append(np.mean(Y_j[n_iter, :, 0]))
                     print("Setting condition to True. Iteration n:", n_iter)
